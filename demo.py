@@ -61,20 +61,33 @@ def make_animation(source_image, driving_video, generator, kp_detector, relative
         if not cpu:
             source = source.cuda()
         driving = torch.tensor(np.array(driving_video)[np.newaxis].astype(np.float32)).permute(0, 4, 1, 2, 3)
-        kp_source = kp_detector(source)
+        kp_source_value, kp_source_jacobian = kp_detector(source)
         kp_driving_initial = kp_detector(driving[:, :, 0])
 
         for frame_idx in tqdm(range(driving.shape[2])):
             driving_frame = driving[:, :, frame_idx]
             if not cpu:
                 driving_frame = driving_frame.cuda()
-            kp_driving = kp_detector(driving_frame)
-            kp_norm = normalize_kp(kp_source=kp_source, kp_driving=kp_driving,
+            kp_driving_value, kp_driving_jacobian = kp_detector(driving_frame)
+            kp_norm = normalize_kp(kp_source={
+                                       "value": kp_source_value,
+                                       "jacobian": kp_source_jacobian
+                                   },
+                                   kp_driving={
+                                       "value": kp_driving_value,
+                                       "jacobian": kp_driving_jacobian
+                                   },
                                    kp_driving_initial=kp_driving_initial, use_relative_movement=relative,
                                    use_relative_jacobian=relative, adapt_movement_scale=adapt_movement_scale)
-            out = generator(source, kp_source=kp_source, kp_driving=kp_norm)
+            out = generator(
+                source,
+                kp_driving_value=kp_norm['value'],
+                kp_driving_jacobian=kp_norm['jacobian'],
+                kp_source_value=kp_source_value, 
+                kp_source_jacobian=kp_source_jacobian,
+            )
 
-            predictions.append(np.transpose(out['prediction'].data.cpu().numpy(), [0, 2, 3, 1])[0])
+            predictions.append(np.transpose(out.data.cpu().numpy(), [0, 2, 3, 1])[0])
     return predictions
 
 def find_best_frame(source, driving, cpu=False):
@@ -107,8 +120,8 @@ if __name__ == "__main__":
     parser.add_argument("--config", required=True, help="path to config")
     parser.add_argument("--checkpoint", default='vox-cpk.pth.tar', help="path to checkpoint to restore")
 
-    parser.add_argument("--source_image", default='sup-mat/source.png', help="path to source image")
-    parser.add_argument("--driving_video", default='sup-mat/source.png', help="path to driving video")
+    parser.add_argument("--source_image", default='sup-mat/source.jpg', help="path to source image")
+    parser.add_argument("--driving_video", default='sup-mat/driving.mp4', help="path to driving video")
     parser.add_argument("--result_video", default='result.mp4', help="path to output")
  
     parser.add_argument("--relative", dest="relative", action="store_true", help="use relative or absolute keypoint coordinates")
@@ -128,6 +141,8 @@ if __name__ == "__main__":
 
     opt = parser.parse_args()
 
+    generator, kp_detector = load_checkpoints(config_path=opt.config, checkpoint_path=opt.checkpoint, cpu=opt.cpu)
+
     source_image = imageio.imread(opt.source_image)
     reader = imageio.get_reader(opt.driving_video)
     fps = reader.get_meta_data()['fps']
@@ -141,7 +156,7 @@ if __name__ == "__main__":
 
     source_image = resize(source_image, (256, 256))[..., :3]
     driving_video = [resize(frame, (256, 256))[..., :3] for frame in driving_video]
-    generator, kp_detector = load_checkpoints(config_path=opt.config, checkpoint_path=opt.checkpoint, cpu=opt.cpu)
+
 
     if opt.find_best_frame or opt.best_frame is not None:
         i = opt.best_frame if opt.best_frame is not None else find_best_frame(source_image, driving_video, cpu=opt.cpu)

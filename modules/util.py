@@ -10,7 +10,7 @@ def kp2gaussian(kp, spatial_size, kp_variance):
     """
     Transform a keypoint into gaussian like representation
     """
-    mean = kp['value']
+    mean = kp
 
     coordinate_grid = make_coordinate_grid(spatial_size, mean.type())
     number_of_leading_dimensions = len(mean.shape) - 1
@@ -44,7 +44,10 @@ def make_coordinate_grid(spatial_size, type):
     yy = y.view(-1, 1).repeat(1, w)
     xx = x.view(1, -1).repeat(h, 1)
 
-    meshed = torch.cat([xx.unsqueeze_(2), yy.unsqueeze_(2)], 2)
+    xx = xx.unsqueeze(2)
+    yy = yy.unsqueeze(2)
+
+    meshed = torch.cat([xx, yy], 2)
 
     return meshed
 

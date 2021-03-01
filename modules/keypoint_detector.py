@@ -40,11 +40,12 @@ class KPDetector(nn.Module):
         """
         shape = heatmap.shape
         heatmap = heatmap.unsqueeze(-1)
-        grid = make_coordinate_grid(shape[2:], heatmap.type()).unsqueeze_(0).unsqueeze_(0)
+        grid = make_coordinate_grid(shape[2:], heatmap.type())
+        grid = grid.unsqueeze(0)
+        grid = grid.unsqueeze(0)
         value = (heatmap * grid).sum(dim=(2, 3))
-        kp = {'value': value}
 
-        return kp
+        return value
 
     def forward(self, x):
         if self.scale_factor != 1:
@@ -58,9 +59,9 @@ class KPDetector(nn.Module):
         heatmap = F.softmax(heatmap / self.temperature, dim=2)
         heatmap = heatmap.view(*final_shape)
 
-        out = self.gaussian2kp(heatmap)
+        value = self.gaussian2kp(heatmap)
 
-        if self.jacobian is not None:
+        if self.jacobian is not None: 
             jacobian_map = self.jacobian(feature_map)
             jacobian_map = jacobian_map.reshape(final_shape[0], self.num_jacobian_maps, 4, final_shape[2],
                                                 final_shape[3])
@@ -70,6 +71,6 @@ class KPDetector(nn.Module):
             jacobian = jacobian.view(final_shape[0], final_shape[1], 4, -1)
             jacobian = jacobian.sum(dim=-1)
             jacobian = jacobian.view(jacobian.shape[0], jacobian.shape[1], 2, 2)
-            out['jacobian'] = jacobian
+            return value, jacobian
 
-        return out
+        return value

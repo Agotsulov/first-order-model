@@ -54,36 +54,31 @@ class OcclusionAwareGenerator(nn.Module):
             deformation = deformation.permute(0, 3, 1, 2)
             deformation = F.interpolate(deformation, size=(h, w), mode='bilinear')
             deformation = deformation.permute(0, 2, 3, 1)
+        # TODO: Replace F.grid_sample not implemented in coreml
         return F.grid_sample(inp, deformation)
 
-    def forward(self, source_image, kp_driving, kp_source):
+    def forward(self, source_image, kp_driving_value, kp_driving_jacobian, kp_source_value, kp_source_jacobian):
         # Encoding (downsampling) part
         out = self.first(source_image)
         for i in range(len(self.down_blocks)):
             out = self.down_blocks[i](out)
-
+            
         # Transforming feature representation according to deformation and occlusion
-        output_dict = {}
         if self.dense_motion_network is not None:
-            dense_motion = self.dense_motion_network(source_image=source_image, kp_driving=kp_driving,
-                                                     kp_source=kp_source)
-            output_dict['mask'] = dense_motion['mask']
-            output_dict['sparse_deformed'] = dense_motion['sparse_deformed']
-
-            if 'occlusion_map' in dense_motion:
-                occlusion_map = dense_motion['occlusion_map']
-                output_dict['occlusion_map'] = occlusion_map
-            else:
-                occlusion_map = None
-            deformation = dense_motion['deformation']
+            occlusion_map, deformation = self.dense_motion_network(
+                source_image,
+                kp_driving_value, 
+                kp_driving_jacobian, 
+                kp_source_value, 
+                kp_source_jacobian,
+            )
+            
             out = self.deform_input(out, deformation)
 
             if occlusion_map is not None:
                 if out.shape[2] != occlusion_map.shape[2] or out.shape[3] != occlusion_map.shape[3]:
                     occlusion_map = F.interpolate(occlusion_map, size=out.shape[2:], mode='bilinear')
                 out = out * occlusion_map
-
-            output_dict["deformed"] = self.deform_input(source_image, deformation)
 
         # Decoding part
         out = self.bottleneck(out)
@@ -92,6 +87,5 @@ class OcclusionAwareGenerator(nn.Module):
         out = self.final(out)
         out = F.sigmoid(out)
 
-        output_dict["prediction"] = out
 
-        return output_dict
+        return out
