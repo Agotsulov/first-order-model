@@ -50,29 +50,26 @@ def load_checkpoints(config_path, checkpoint_path, cpu=False):
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("--config", required=True, help="path to config")
+    parser.add_argument("--config", default="config/vox-256.yaml", help="path to config")
     parser.add_argument("--checkpoint", default='vox-cpk.pth.tar', help="path to checkpoint to restore")
 
-    parser.add_argument("--source_image", default='sup-mat/source.jpg', help="path to source image")
-    parser.add_argument("--driving_video", default='sup-mat/driving.mp4', help="path to driving video")
-    parser.add_argument("--result_video", default='result.mp4', help="path to output")
+    parser.add_argument("-o", "--onnx", dest="onnx", action="store_true", help="add convert to onnx.")
+    parser.add_argument("-ts", "--torchscript", dest="torchscript", action="store_true", help="add convert to torchscript.")
+    parser.add_argument("-q", "--quantize", dest="quantize", action="store_true", help="add dynamic quantize.")
  
-    parser.add_argument("--relative", dest="relative", action="store_true", help="use relative or absolute keypoint coordinates")
-    parser.add_argument("--adapt_scale", dest="adapt_scale", action="store_true", help="adapt movement scale based on convex hull of keypoints")
- 
-    parser.add_argument("--cpu", dest="cpu", action="store_true", help="cpu mode.")
-    parser.add_argument("--onnx", dest="onnx", action="store_true", help="add convert to onnx.")
-    parser.add_argument("--torchscript", dest="torchscript", action="store_true", help="add convert to torchscript.")
- 
-
-    parser.set_defaults(relative=False)
-    parser.set_defaults(adapt_scale=False)
-
     opt = parser.parse_args()
 
 
-    generator, kp_detector = load_checkpoints(config_path=opt.config, checkpoint_path=opt.checkpoint, cpu=opt.cpu)
+    generator, kp_detector = load_checkpoints(config_path=opt.config, checkpoint_path=opt.checkpoint, cpu=True)
 
+
+
+    if opt.quantize: 
+        kp_detector = torch.quantization.quantize_dynamic(
+            kp_detector, {torch.nn.Linear}, dtype=torch.qint8)
+
+        generator = torch.quantization.quantize_dynamic(
+            generator, {torch.nn.Linear}, dtype=torch.qint8)
     
     example_input_kp_detector = torch.randn(1, 3, 256, 256, requires_grad=True)
     
@@ -90,6 +87,7 @@ if __name__ == "__main__":
     example_input_kp_source_value = torch.randn(1, 10, 2, requires_grad=True)
     example_input_kp_source_jacobian = torch.randn(1, 10, 2, 2, requires_grad=True)
     
+
     if opt.torchscript:
         print("CONVERT GENERATOR TO TORCHSCRIPT")
         traced_generator = torch.jit.trace(
