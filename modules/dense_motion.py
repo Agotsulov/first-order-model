@@ -55,7 +55,6 @@ class DenseMotionNetwork(nn.Module):
         if kp_driving_value is not None:
             # TODO: Replace torch.inverse not implemented in coreml
             jacobian = torch.matmul(kp_source_jacobian, torch.inverse(kp_driving_jacobian))
-            jacobian = kp_driving_jacobian
             jacobian = jacobian.unsqueeze(-3).unsqueeze(-3)
             jacobian = jacobian.repeat(1, 1, h, w, 1, 1)
             coordinate_grid = torch.matmul(jacobian, coordinate_grid.unsqueeze(-1))
